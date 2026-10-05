@@ -1,0 +1,10 @@
+.secrets/
+secrets/
+diagnostics/
+backups/
+upstream/
+**/build/
+**/.gradle/
+**/.cxx/
+local.properties
+avatar/custom/
