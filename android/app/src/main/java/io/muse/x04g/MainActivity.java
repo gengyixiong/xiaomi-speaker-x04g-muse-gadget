@@ -44,6 +44,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         return super.dispatchKeyEvent(e);
     }
     void brightness(){android.content.SharedPreferences p=getSharedPreferences("muse",MODE_PRIVATE);WindowManager.LayoutParams w=getWindow().getAttributes();w.screenBrightness=p.getBoolean("auto_brightness",true)?-1:p.getFloat("brightness",0.5f);getWindow().setAttributes(w);}
+    void adjustBrightness(float delta){android.content.SharedPreferences p=getSharedPreferences("muse",MODE_PRIVATE);float current=p.getFloat("brightness",0.5f);float next=Math.max(0.05f,Math.min(1.0f,current+delta));p.edit().putBoolean("auto_brightness",false).putFloat("brightness",next).apply();WindowManager.LayoutParams w=getWindow().getAttributes();w.screenBrightness=next;getWindow().setAttributes(w);}
+    int adjustVolume(int deltaSteps){AudioManager audio=getSystemService(AudioManager.class);int max=audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);int current=audio.getStreamVolume(AudioManager.STREAM_MUSIC);int next=Math.max(0,Math.min(max,current+deltaSteps));audio.setStreamVolume(AudioManager.STREAM_MUSIC,next,0);return next;}
     @Override public void onSensorChanged(SensorEvent e){lux=e.values[0];}
     @Override public void onAccuracyChanged(Sensor s,int accuracy){}
     void button(LinearLayout page,String text,Runnable action){Button b=new Button(this);b.setText(text);b.setOnClickListener(v->action.run());page.addView(b);}

@@ -116,8 +116,10 @@ final class Speech {
                     byte[] pcm=audio(event);
                     JSONObject interaction=event.optJSONObject("interaction");
                     String status=interaction==null?event.optString("status"):interaction.optString("status");
-                    if(status.equals("completed"))completed=true;
                     if(pcm!=null&&pcm.length>0) {
+                        long sum=0;int count=pcm.length/2;
+                        for(int i=0;i<pcm.length;i+=2){short val=(short)((pcm[i]&0xFF)|(pcm[i+1]<<8));sum+=Math.abs(val);}
+                        service.level=count>0?Math.min(1.0f,(float)sum/count/10000f):0f;
                         if(output==null) {
                             int minimum=AudioTrack.getMinBufferSize(RATE,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT);
                             if(minimum<=0)throw new IOException("Speaker unavailable");
@@ -171,17 +173,17 @@ final class Speech {
 
     void finish(int expected,String error) {
         if(!current(expected))return;
-        active=false;
+        active=false;service.level=0;
         if(error!=null){failed=true;pending.clear();service.audioStatus=error;Toast.makeText(service,error,Toast.LENGTH_SHORT).show();}
         else service.audioStatus="Gemini TTS ready";
         pump();
-        if(!busy()){service.setState(service.link!=null&&service.link.turn?"THINKING":"IDLE");service.hideCaptionLater();}
+        if(!busy()){service.setState(service.link!=null&&service.link.turn?"THINKING":"IDLE");if(error==null)service.makeHappy();service.hideCaptionLater();}
     }
 
     void stop() {
         generation++;
         synchronized(playback){if(call!=null)call.cancel();if(track!=null){try{track.pause();track.flush();}catch(IllegalStateException ignored){}}}
-        positions.clear();pending.clear();active=false;failed=false;service.caption="";service.captionOffset=0;
+        positions.clear();pending.clear();active=false;failed=false;service.caption="";service.captionOffset=0;service.level=0;
         service.audioStatus=key.isEmpty()?"Gemini API key not configured":"Gemini TTS ready";
     }
     boolean busy(){return active||!pending.isEmpty();}

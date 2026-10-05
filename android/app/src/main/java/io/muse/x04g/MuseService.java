@@ -18,7 +18,8 @@ public final class MuseService extends Service {
     volatile String state="BOOT",audioStatus="";
     volatile int captionOffset;
     volatile float level;
-    volatile long turnGeneration,modeStarted=SystemClock.elapsedRealtime();
+    volatile long turnGeneration,modeStarted=SystemClock.elapsedRealtime(),happyUntil;
+    void makeHappy(){happyUntil=SystemClock.elapsedRealtime()+1600;}
     final Handler main=new Handler(Looper.getMainLooper());
     Speech speech;Voice voice;
     Store store;MuseLink link;BleSetup ble;
