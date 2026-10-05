@@ -26,8 +26,8 @@
 | Phase 3 · Avatar/UI | 原生 Canvas + JNI 复用官方 `muse_pixel` renderer；全屏、CJK 回复字幕、状态动画和随机 idle pose 已运行。用户选择恢复官方默认 pixel 形象；旧 Friday renderer 保存在 `avatar/custom/friday.saved.c`，不参与构建。 |
 | Phase 4 · appliance | 一个 Magisk module 启动一个 root supervisor；Android 前台服务及 Activity 自启，heartbeat 看护 UI/service。实体设备上验过 Wi-Fi 恢复、进程恢复和在 APK `SIGSTOP` 时使用真实 Volume+/−五秒逃生至 Android。系统原 Home、Android、Kernel、vendor 保留。 |
 | Phase 5 · Gemini TTS | 系统 TextToSpeech 替换为 `gemini-3.8-flash-tts` / `Leda`；现有 OkHttp 异步调用 Gemini Interactions SSE，24 kHz mono PCM16LE 首块直接进 AudioTrack。实机 API 模型查询 HTTP 200，播放/打断/字幕 4 秒留存/同一回复快照去重检查通过；没有音频文件，也不额外引入 SDK。 |
-| 最近的语音问题与冷启动 | 用户确认 Leda 声音正常。打断相关两次后续录音提交字节数分别为 108800 与 84480，原始 RMS 81 与 75（首轮成功 utterance 的日志 RMS 84）。iPhone 回听第二条为清晰完整录音，但 Muse 的第二问识别/回答不对。随后另一次重启日志为 `cold,powerkey`，未发现 Muse 崩溃、Kernel panic 或 I/O error；当时 `/data/app` 下 Muse APK 缺失，配对偏好仍在。已先备份私有配对/设置、重装同一 APK、执行 `sync`，并确认自动重新注册；APK 缺失的原因仍未查明。 |
-
+| Phase 6 · 打断转写修复与音频输入优化 | 对齐上游 `muse_chat_link.c` 协议：校验 root 级 `reply_to_message_id` 与 `parent_message_id`、在 ACK 前阻断预泄露回复、追踪 note ID 建立 afterNote 关系。录音输入改用 `AudioSource.MIC` 规避近讲滤波，引入有理软限幅平滑抗削顶。实机测试确认打断后第二问回答恢复正常。 |
+| Phase 7 · 动效与交互增强 | 触控摸摸头宠溺反馈（happy 跳跃/弯眼笑/爱心泡泡）；回答完毕卖萌反馈；实时音频振幅计算驱动动态口型同步（Lip Sync）；屏幕左侧垂直滑动调亮度、右侧调音量并显示半透明数值反馈；轻触屏幕随时打断语音播报。 |
 首次 X04G 问答和后续用户问答的体验反馈与合成 TTS 测试不是一回事。早期用户曾确认一次打断后的新问题回答正确；最新反馈证明不能据此认定当前多轮打断识别问题已经解决。设备日志显示正常录音提交、Muse ACK 和回复事件仅验证数据流走通，并不能检验语音识别语义。
 
 ## 当前最重要的调查方向
