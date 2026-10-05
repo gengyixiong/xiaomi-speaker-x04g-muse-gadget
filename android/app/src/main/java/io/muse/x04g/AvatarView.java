@@ -18,6 +18,14 @@ final class AvatarView extends View {
     final Runnable settings;
     final Runnable hold;
 
+    static final int[] SIRI_COLORS={0xFF00F0FF,0xFF007AFF,0xFF8A2BE2,0xFFFF2D55,0xFFFF7A00,0xFF00FF9D,0xFF00F0FF};
+    static final float[] SIRI_POS={0f,0.16f,0.35f,0.55f,0.74f,0.90f,1f};
+    final Paint glowPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+    final Matrix glowMatrix=new Matrix();
+    final RectF glowRect=new RectF();
+    Shader glowShader;
+    float glowAlpha,lastDrawTime;
+
     float downX,downY,lastY,volAccumulator;
     long downTime;
     boolean dragging,isLeft;
@@ -29,12 +37,20 @@ final class AvatarView extends View {
         hold=()->{if(cornerStarted!=0){cornerStarted=0;settings.run();}};
         setBackgroundColor(Color.BLACK);text.setColor(Color.WHITE);text.setTextSize(28);
         scrimPaint.setColor(Color.argb(160,0,0,0));
+        glowPaint.setStyle(Paint.Style.STROKE);
+        glowPaint.setStrokeCap(Paint.Cap.ROUND);
+        glowPaint.setStrokeJoin(Paint.Join.ROUND);
     }
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);MuseService s=MuseService.instance;long now=SystemClock.elapsedRealtime();
         String state=s==null?"BOOT":s.state;
         int mode=state.equals("IDLE")?1:state.equals("LISTENING")?2:state.equals("THINKING")?3:state.equals("SPEAKING")?4:state.equals("ERROR")?5:0;
         motion.update(state.equals("IDLE"),now);
+        float dt=lastDrawTime==0?0.04f:Math.min(0.1f,(now-lastDrawTime)/1000f);lastDrawTime=now;
+        boolean edgeEnabled=s==null||s.store==null||s.store.prefs.getBoolean("edge_glow",true);
+        float targetAlpha=(edgeEnabled&&s!=null)?(state.equals("LISTENING")?1f:state.equals("THINKING")?0.65f:0f):0f;
+        if(glowAlpha<targetAlpha)glowAlpha=Math.min(targetAlpha,glowAlpha+dt*6f);
+        else if(glowAlpha>targetAlpha)glowAlpha=Math.max(targetAlpha,glowAlpha-dt*3.5f);
         float happy=0,modeTime=s==null?0:(now-s.modeStarted)/1000f;
         if(s!=null&&s.happyUntil>now){
             long left=s.happyUntil-now;
@@ -57,6 +73,30 @@ final class AvatarView extends View {
         }else{
             int side=Math.min(384,Math.min(getWidth(),getHeight()-76));float x=(getWidth()-side)/2f,y=Math.max(0,(getHeight()-side-76)/2f);
             canvas.drawBitmap(bitmap,null,new RectF(x,y,x+side,y+side),paint);
+        }
+        if(glowAlpha>0.01f){
+            if(glowShader==null&&getWidth()>0)glowShader=new SweepGradient(getWidth()/2f,getHeight()/2f,SIRI_COLORS,SIRI_POS);
+            if(glowShader!=null){
+                float angle=(now*0.16f)%360f;
+                glowMatrix.setRotate(angle,getWidth()/2f,getHeight()/2f);
+                glowShader.setLocalMatrix(glowMatrix);
+                glowPaint.setShader(glowShader);
+                float audioLevel=(state.equals("LISTENING")&&s!=null)?s.level:0f;
+
+                float auraW=28f+22f*audioLevel;
+                glowPaint.setStrokeWidth(auraW);
+                glowPaint.setAlpha((int)(110*glowAlpha*(0.8f+0.35f*audioLevel)));
+                float o1=auraW/2f;
+                glowRect.set(o1,o1,getWidth()-o1,getHeight()-o1);
+                canvas.drawRoundRect(glowRect,28f,28f,glowPaint);
+
+                float coreW=8f+6f*audioLevel;
+                glowPaint.setStrokeWidth(coreW);
+                glowPaint.setAlpha((int)(250*glowAlpha));
+                float o2=coreW/2f;
+                glowRect.set(o2,o2,getWidth()-o2,getHeight()-o2);
+                canvas.drawRoundRect(glowRect,24f,24f,glowPaint);
+            }
         }
         String value=s==null||state.equals("LISTENING")?"":s.caption;
         if(!shown.equals(value)){shown=value;caption=value.isEmpty()?null:StaticLayout.Builder.obtain(value,0,value.length(),text,Math.max(1,getWidth()-40)).setAlignment(Layout.Alignment.ALIGN_CENTER).setIncludePad(false).build();}
