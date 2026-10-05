@@ -15,11 +15,17 @@ final class Voice {
         b.put(Pairing.utf("RIFF")).putInt(-1).put(Pairing.utf("WAVEfmt ")).putInt(16).putShort((short)1).putShort((short)1).putInt(16000).putInt(32000).putShort((short)2).putShort((short)16).put(Pairing.utf("data")).putInt(-1);
         return b.array();
     }
+    static int softLimit(int x) {
+        if(x<=24000&&x>=-24000)return x;
+        boolean neg=x<0;long excess=neg?-x-24000L:x-24000L;
+        int smooth=(int)(24000L+(8767L*excess)/(excess+8767L));
+        return neg?-smooth:smooth;
+    }
     void start(long generation) throws Exception {
         stop();
         int min=AudioRecord.getMinBufferSize(16000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
         if(min<=0)throw new IllegalStateException("16k mono recording unavailable");
-        AudioRecord r=new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION,16000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,Math.max(min,6144));
+        AudioRecord r=new AudioRecord(MediaRecorder.AudioSource.MIC,16000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,Math.max(min,6144));
         if(r.getState()!=AudioRecord.STATE_INITIALIZED){r.release();throw new IllegalStateException("microphone init failed");}
         for(AudioDeviceInfo d:service.getSystemService(AudioManager.class).getDevices(AudioManager.GET_DEVICES_INPUTS))if(d.getType()==AudioDeviceInfo.TYPE_BUILTIN_MIC){r.setPreferredDevice(d);break;}
         record=r;r.startRecording();
@@ -39,7 +45,7 @@ final class Voice {
                 for(int i=staged;i+1<staged+n;i+=2){
                     int sample=(short)((stage[i]&255)|(stage[i+1]<<8));rawEnergy+=(double)sample*sample;
                     int amplified=Math.round(sample*gain);if(amplified>32767||amplified<-32768)clipped++;
-                    sample=Math.max(-32768,Math.min(32767,amplified));
+                    sample=softLimit(amplified);
                     stage[i]=(byte)sample;stage[i+1]=(byte)(sample>>8);energy+=(double)sample*sample;
                 }
                 rawPeak=Math.max(rawPeak,(float)Math.sqrt(rawEnergy/Math.max(1,n/2))/6000);
