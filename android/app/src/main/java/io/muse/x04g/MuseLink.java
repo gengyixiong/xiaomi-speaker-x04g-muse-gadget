@@ -36,14 +36,24 @@ final class MuseLink {
     long lastSeq,lastContent,lastEvent,turnStart;
     String registerId;
     String vmName="";
+    String noteId="",noteParentId="",pendingUserMsgId="";
+    boolean afterNote;
     final Set<String> userIds=new HashSet<>(),rejected=new HashSet<>();
     // Some subscription messages omit their parent. Remember the preceding
     // turn's IDs so a cancelled reply cannot become the next voice response.
-    final Set<String> previousMessages=new HashSet<>();
+    final LinkedHashSet<String> previousMessages=new LinkedHashSet<>();
+    final Map<String,String> messageParents=new HashMap<>();
     final LinkedHashMap<String,StringBuilder> messages=new LinkedHashMap<>();
     final Set<String> done=new HashSet<>();
     final ByteArrayOutputStream control=new ByteArrayOutputStream(),lines=new ByteArrayOutputStream(),ack=new ByteArrayOutputStream();
     ScheduledFuture<?> retry;
+    void rememberPrevious(Collection<String> ids) {
+        previousMessages.addAll(ids);
+        while(previousMessages.size()>32){
+            Iterator<String> it=previousMessages.iterator();
+            it.next();it.remove();
+        }
+    }
     final ConnectivityManager.NetworkCallback callback=new ConnectivityManager.NetworkCallback() {
         @Override public void onAvailable(Network n) {post(()->{if(ws==null)reconnect();});}
         @Override public void onLost(Network n) {post(()->{if(!online())fail("Wi-Fi offline");});}
@@ -158,7 +168,23 @@ final class MuseLink {
         if(f.kind==4 || f.status>=400)throw new HttpError(f.status);
         if(f.id==controlId){control.write(f.data);decodeControl();if(f.end)throw new IOException("control ended");}
         else if(f.id==subscribeId){for(byte b:f.data){if(b=='\n'){if(lines.size()>0)event(new JSONObject(lines.toString("UTF-8")));lines.reset();}else{if(lines.size()>=256*1024)throw new IOException("subscription line too large");lines.write(b);}}if(f.end)throw new IOException("subscription ended");}
-        else if(f.id==chatId && turn){if(ack.size()+f.data.length>64*1024)throw new IOException("ack too large");ack.write(f.data);if(f.end){JSONObject a=new JSONObject(ack.toString("UTF-8"));if(a.optJSONObject("result")!=null)a=a.getJSONObject("result");for(String k:new String[]{"message_id","reply_to_message_id"})if(!a.optString(k).isEmpty())userIds.add(a.getString(k));acked=true;status.accept("Thinking");Log.i("MuseX04G","chat acknowledged");}}
+        else if(f.id==chatId && turn){
+            if(ack.size()+f.data.length>64*1024)throw new IOException("ack too large");
+            ack.write(f.data);
+            if(f.end){
+                JSONObject raw=new JSONObject(ack.toString("UTF-8"));
+                JSONObject a=raw.optJSONObject("result")!=null?raw.getJSONObject("result"):raw;
+                String nid=a.optString("message_id");if(nid.isEmpty())nid=raw.optString("message_id");
+                String pid=a.optString("reply_to_message_id");if(pid.isEmpty())pid=raw.optString("reply_to_message_id");
+                if(pid.isEmpty())pid=a.optString("parent_message_id",raw.optString("parent_message_id"));
+                noteId=nid;noteParentId=pid;
+                if(!noteId.isEmpty())userIds.add(noteId);
+                if(!noteParentId.isEmpty())userIds.add(noteParentId);
+                if(!pendingUserMsgId.isEmpty()&&(!noteId.isEmpty()&&pendingUserMsgId.equals(noteId)||!noteParentId.isEmpty()&&pendingUserMsgId.equals(noteParentId)))afterNote=true;
+                acked=true;status.accept("Thinking");
+                Log.i("MuseX04G","chat acknowledged hasNote="+(!noteId.isEmpty())+" hasParent="+(!noteParentId.isEmpty()));
+            }
+        }
     }
     void decodeControl() throws Exception {
         byte[] b=control.toByteArray();int at=0;
@@ -210,22 +236,38 @@ final class MuseLink {
     void cancelTurn() throws Exception {
         if(turnTimer!=null)turnTimer.cancel(false);
         if(chatId!=0 && established)send(Native.reset(nativeHandle,chatId));
-        if(!messages.isEmpty()){previousMessages.clear();previousMessages.addAll(messages.keySet());}
-        chatId=0;turn=submitted=acked=busy=avatarMode=avatarSaved=false;userIds.clear();rejected.clear();messages.clear();done.clear();ack.reset();reply.accept(new Reply("","",true));
+        rememberPrevious(messages.keySet());
+        chatId=0;turn=submitted=acked=busy=avatarMode=avatarSaved=afterNote=false;
+        noteId="";noteParentId="";pendingUserMsgId="";
+        userIds.clear();rejected.clear();messages.clear();messageParents.clear();done.clear();ack.reset();reply.accept(new Reply("","",true));
     }
     void event(JSONObject e) throws Exception {
         if(!e.optString("type").equals("event"))return;
         long seq=e.optLong("seq");if(seq>0&&seq<=lastSeq)return;if(seq>lastSeq)lastSeq=seq;
         if(!turn)return;String type=e.optString("event");JSONObject p=e.optJSONObject("payload");if(p==null)return;
         if(type.equals("agent.status")||type.equals("task.status")){if(!submitted)return;String s=p.optString("activity_code",p.optString("status"));busy=!s.isEmpty()&&!Arrays.asList("online","idle","completed","failed").contains(s);lastEvent=SystemClock.elapsedRealtime();return;}
+        String id=p.optString("message_id");if(id.isEmpty())id=e.optString("message_id");if(id.isEmpty())id=p.optString("id");if(id.isEmpty())id=e.optString("id");
+        if(id.isEmpty())return;
+        if(type.equals("message.user")){
+            pendingUserMsgId=id;
+            boolean match=(!noteId.isEmpty()&&(id.equals(noteId)||id.equals(noteParentId)));
+            if(match){afterNote=true;Log.i("MuseX04G","user note event matched=true");}
+            return;
+        }
         if(!Arrays.asList("delta.message_start","delta.text_append","delta.message_done","message.assistant").contains(type))return;
-        String id=p.optString("message_id");if(id.isEmpty())id=e.optString("message_id");if(id.isEmpty())id=p.optString("id");if(id.isEmpty()||rejected.contains(id))return;
-        if(!submitted){if(previousMessages.size()<16)previousMessages.add(id);return;}
+        if(rejected.contains(id))return;
+        if(!submitted){rememberPrevious(Collections.singleton(id));return;}
         if(previousMessages.contains(id)){Log.i("MuseX04G","reply ignored: cancelled or preceding message");return;}
-        String parent=p.optString("reply_to_message_id");if(parent.isEmpty())parent=p.optString("parent_message_id");
-        if(acked&&!parent.isEmpty()&&!userIds.contains(parent)&&!messages.containsKey(parent)){rejected.add(id);Log.i("MuseX04G","reply rejected: belongs to another turn");return;}
+        if(!acked){rememberPrevious(Collections.singleton(id));Log.i("MuseX04G","reply ignored: arrived before note ack");return;}
+        String parent=p.optString("reply_to_message_id");
+        if(parent.isEmpty())parent=e.optString("reply_to_message_id");
+        if(parent.isEmpty())parent=p.optString("parent_message_id");
+        if(parent.isEmpty())parent=e.optString("parent_message_id");
+        if(parent.isEmpty())parent=messageParents.getOrDefault(id,"");
+        else messageParents.put(id,parent);
+        if(!parent.isEmpty()&&!userIds.contains(parent)&&!messages.containsKey(parent)){rejected.add(id);Log.i("MuseX04G","reply rejected: belongs to another turn");return;}
         if(rejected.size()>=8&&parent.isEmpty()&&!messages.containsKey(id))return;
-        if(!messages.containsKey(id)){if(messages.size()>=8)return;Log.i("MuseX04G","reply start acked="+acked+" parent="+(parent.isEmpty()?"absent":userIds.contains(parent)?"current":messages.containsKey(parent)?"followup":"other"));messages.put(id,new StringBuilder());}
+        if(!messages.containsKey(id)){if(messages.size()>=8)return;Log.i("MuseX04G","reply start acked="+acked+" parent="+(parent.isEmpty()?"absent":userIds.contains(parent)?"current":messages.containsKey(parent)?"followup":"other")+" afterNote="+afterNote);messages.put(id,new StringBuilder());}
         StringBuilder text=messages.get(id);lastEvent=lastContent=SystemClock.elapsedRealtime();
         if(type.equals("delta.text_append")){String t=p.optString("text");if(text.length()+t.length()>64*1024)throw new IOException("reply too large");text.append(t);}
         if(type.equals("delta.message_done")||type.equals("message.assistant")){if(!p.optBoolean("display_text_ready",true)&&!type.equals("delta.message_done"))return;String full=p.optString("display_text",p.optString("content"));if(full.length()>64*1024)throw new IOException("reply too large");if(!full.isEmpty()&&full.length()!=text.length()){text.setLength(0);text.append(full);}done.add(id);}
@@ -241,15 +283,22 @@ final class MuseLink {
     void settle() {
         if(closed||!turn)return;long now=SystemClock.elapsedRealtime();
         if(now-turnStart>(avatarMode?900000:180000) || (messages.isEmpty()&&now-turnStart>(avatarMode?900000:60000))){status.accept("Muse reply timeout");try{cancelTurn();}catch(Exception ignored){}return;}
-        if(!messages.isEmpty()&&done.size()==messages.size()&&now-lastEvent>=3000&&(!busy||now-lastContent>=20000)){turn=false;status.accept("Connected: "+vmName);previousMessages.clear();previousMessages.addAll(messages.keySet());messages.clear();done.clear();ack.reset();userIds.clear();rejected.clear();chatId=0;return;}
+        if(!messages.isEmpty()&&done.size()==messages.size()&&now-lastEvent>=3000&&(!busy||now-lastContent>=20000)){
+            turn=false;status.accept("Connected: "+vmName);
+            rememberPrevious(messages.keySet());
+            messages.clear();messageParents.clear();done.clear();ack.reset();userIds.clear();rejected.clear();chatId=0;
+            noteId="";noteParentId="";pendingUserMsgId="";afterNote=false;
+            return;
+        }
         turnTimer=worker.schedule(this::settle,1,TimeUnit.SECONDS);
     }
     void disconnect() {
         if(turnTimer!=null)turnTimer.cancel(false);
         WebSocket old=ws;ws=null;if(old!=null)old.cancel();
         if(nativeHandle!=0)Native.destroy(nativeHandle);nativeHandle=0;
-        connecting=established=registered=turn=submitted=acked=busy=false;controlId=subscribeId=chatId=lastSeq=0;
-        control.reset();lines.reset();ack.reset();messages.clear();done.clear();userIds.clear();rejected.clear();previousMessages.clear();reply.accept(new Reply("","",true));
+        connecting=established=registered=turn=submitted=acked=busy=afterNote=false;controlId=subscribeId=chatId=lastSeq=0;
+        noteId=noteParentId=pendingUserMsgId="";
+        control.reset();lines.reset();ack.reset();messages.clear();messageParents.clear();done.clear();userIds.clear();rejected.clear();previousMessages.clear();reply.accept(new Reply("","",true));
     }
     void fail(String s) {disconnect();schedule(s);}
     void schedule(String s) {
