@@ -10,11 +10,14 @@
 
 ## 当前状态
 
-- 设备：最近一次读取为 Android 10、`sys.boot_completed=1`；APK 当前运行于 PID 3980，Muse 已自动注册，Android 前台 Activity 是 `io.muse.x04g/.MainActivity`。这些是该次检查的快照，不保证设备之后一直联网或在线。
-- APK：`android/app/build/outputs/apk/debug/app-debug.apk`；application ID `io.muse.x04g`，version `0.2.0`，只编译设备需要的 `armeabi-v7a`。
-- 正常交互：按住顶部中间键开始录音，松开提交 Muse voice note。PTT 的 KEY DOWN 会立即停止 Gemini TTS 和旧本地播放；Leda TTS、音量键、默认官方 pixel Avatar、随机 idle 动作、Settings、启动监督及双音量键逃生已有实机运行记录。
-- **当前待解决问题：**用户报告第一次问答正确，打断后第二问却被 Muse 说成“没有转写出来”或回复混乱。用户在 iPhone Muse App 回听该第二条 voice note，确认录音清楚完整。这个结果支持“X04G 确实录到并上传了语音”，不代表 Muse 已正确识别/理解，也尚不能证明新旧轮次串线。
-- 用户不希望持久保存语音或聊天历史。维持当前设计：语音仅当前 turn 内存/网络缓冲，完成后释放；debug 可记录 turn generation、提交结果、时序、消息字段是否存在、字节数、电平、SDK 状态码；**不要写入录音、transcription 或 agent 回复**。手机 App 已提供回听证据，先不要在 X04G 再复制一份或做两小时录音轮转。
+- 设备：最近一次检查为 Android 10、`sys.boot_completed=1`；APK 当前运行于 PID 5876，Muse 已自动注册并处于 `IDLE` 状态，Android 前台 Activity 是 `io.muse.x04g/.MainActivity`。
+- APK：`android/app/build/outputs/apk/debug/app-debug.apk`；application ID `io.muse.x04g`，version `0.2.0`，32位 `armeabi-v7a`。
+- Git 版本控制与标签：工作区已完全纳入 Git 版本控制。
+  - `v0.2.0-baseline` (Commit `505bf88`)：打断串轮修复与音频输入优化后的完整稳定基线。
+  - `v0.2.1-bust-anchored` (Commit `075b9d6`)：宽屏大半身特写（贴底全高版）稳定版本。
+  - `master` 最新 HEAD：包含大半身特写、按下说话键 Siri 风格全边缘霓虹流光跑马灯、设置独立开关。
+- 原待解决问题（打断后第二问混乱）处理结果：**已彻底解决并经用户实机确认通过**。根因为 Android 端缺少对上游 `/chat/subscribe` 事件 root 级 `reply_to_message_id`/`parent_message_id` 的关联，且在收到 `/chat/stream` ACK 之前过早放行了上一个回复的残留事件。严格对齐官方 `muse_chat_link.c` 逻辑后，打断后第二问能稳定正确回答。
+- 用户隐私原则依然严格贯彻：**不保存录音、不保存识别文字、不持久化聊天正文**。Debug 日志仅记录时间、turn generation、状态、字节数、电平、SDK 状态码及字段存在性，绝无敏感数据泄露。
 
 ## 开发过程和阶段结果
 
@@ -29,19 +32,20 @@
 | Phase 6 · 打断转写修复与音频输入优化 | 对齐上游 `muse_chat_link.c` 协议：校验 root 级 `reply_to_message_id` 与 `parent_message_id`、在 ACK 前阻断预泄露回复、追踪 note ID 建立 afterNote 关系。录音输入改用 `AudioSource.MIC` 规避近讲滤波，引入有理软限幅平滑抗削顶。实机测试确认打断后第二问回答恢复正常。 |
 | Phase 7 · 动效与交互增强 | 触控摸摸头宠溺反馈（happy 跳跃/弯眼笑/爱心泡泡）；回答完毕卖萌反馈；实时音频振幅计算驱动动态口型同步（Lip Sync）；屏幕左侧垂直滑动调亮度、右侧调音量并显示半透明数值反馈；轻触屏幕随时打断语音播报。 |
 | Phase 8 · 宽屏贴底下半身特写与 Siri 边缘跑马灯 | 宽屏半身像放大（3:2比例裁切下半身、紧贴屏幕下沿 480p 满高，占屏 720×480，保留完整手部、爱心与气泡，带半透明字幕底条）；按键说话时触发双层 Siri 风格全边缘霓虹极光流光跑马灯（SweepGradient 旋转循环、随麦克风实时音浪脉冲呼吸、释放后平滑缓释）；Settings 中提供半身特写与跑马灯独立实时切换开关。 |
-首次 X04G 问答和后续用户问答的体验反馈与合成 TTS 测试不是一回事。早期用户曾确认一次打断后的新问题回答正确；最新反馈证明不能据此认定当前多轮打断识别问题已经解决。设备日志显示正常录音提交、Muse ACK 和回复事件仅验证数据流走通，并不能检验语音识别语义。
 
-## 当前最重要的调查方向
+## 已确认的根因修复细节与验证结果
 
-Gemini TTS 输入的是 Muse 已经返回的**文字**，不接收 mic，也不做 ASR；它不可能把“转写”变错。问题在 Muse voice note / Agent 路径或新旧 turn 对应关系。
-
-从代码看，下一位维护者应优先逐一核对：
-
-1. [Voice.java](../android/app/src/main/java/io/muse/x04g/Voice.java) 的每次 PTT 是否各自完整启动/结束一个 AudioRecord 和 WAV 请求，短 press、录音启动竞态及取消旧 recording 的路径。
-2. [MuseLink.java](../android/app/src/main/java/io/muse/x04g/MuseLink.java) 中 `beginVoice`、`voiceChunk`、`cancelTurn`、`turn/submitted/acked` 的顺序；第二条 note 的 `/chat/stream` ACK 是否提供新 message ID，订阅中哪些消息属于新 note。
-3. 上游 `muse_chat_link.c` 的 note ACK、`message.user` 与 reply parent 过滤。当前 Android 的 `event()` 处理字段及有限 previous-message ID 集合；不少实际 reply 日志显示 parent absent。比较 Android 和官方事件解析后，再决定是缺字段解析、订阅时序，还是服务器本身对这条录音的 transcription 失败。现有证据不足以直接认定任一根因。
-
-追查时只记录 generation、ACK 成败、ID 是否存在/是否匹配（需要关联时用当前进程内临时编号）、event type/父字段是否存在、提交和回复时间、电平及字节数。日志不得包含 text、ID 原文、base64、audio bytes 或 token。可利用 iPhone 里已经存在的第二条录音进行一次对照；避免要求用户重复录制多轮或建立两小时持久录音机制。
+1. **打断后第二问回复混乱的根因**：
+   - 上游 Muse 服务端向 Gadget 返回回复文本前，会在 WebSocket `/chat/subscribe` 流中先收到各种状态事件（包括 `message.user`、上一轮残留事件、以及当前 voice note 的 ACK 确认事件）。
+   - 原先 Android 端 `MuseLink.java` 在收到当前 voice note 的 ACK 之前，如果接收到无 parent 的 reply start，会将其错误认作是新回复而过早发给 TTS，导致上轮回复与新一轮录音发生串轮。
+   - 此外，部分回复的关联字段仅位于 envelope 根级的 `reply_to_message_id` 或 `parent_message_id`，原代码只解析了嵌套在 `message` 对象下的字段。
+   - **修复**：对齐上游 `muse_chat_link.c`，严格在收到当前 note ACK 后才接受回复、加入前序消息追踪队列、补全 root 级 parent 字段匹配，彻底消除了串轮现象。
+2. **拾音优化**：
+   - 录音源从 `VOICE_RECOGNITION` 改为 `MIC`，移除了原厂针对近讲手持电话的侵略性压制滤波，提高了远距离与快速语速的识别灵敏度；
+   - 增加有理数无损软限幅算法（`softLimit`），在数字增益放大至 24000 以上时进行平滑渐进式饱和压缩，避免方波削顶破音。
+3. **视觉与交互升级**：
+   - 实现了完整的触控反馈系统（摸摸头、滑动手势、轻触打断）；
+   - 大半身宽屏特写（Upper Body Zoom）与 Siri 风格边缘跑马灯（Siri Edge Glow）已实机验证并通过截屏确认，在设置界面均有开关独立控制。
 
 ## 运行依赖、构建和安装
 

@@ -2,7 +2,7 @@
 
 保留 Xiaomi X04G 当前 Android 10、Kernel 和驱动，适配 Meta 官方 Muse Gadget SDK。
 
-已适配：独立Muse连接、按住中间键录音/松开提交、Gemini TTS回复、官方C Avatar全屏动画和字幕、隐藏Settings、常亮/亮度、开机自启及一个root监督程序。麦克风默认×5增益；用户确认Leda音色正常、打断时旧声音停止。注意：最新反馈为第一次问答正常，但打断后第二问有时没有正确转写/回答；用户回听 iPhone Muse App 中第二条录音确认清楚完整。该语音识别/轮次问题仍待排查，详见[当前状态及开发日志](docs/PROJECT_LOG.md)和[接手AI提示词](docs/AI_HANDOFF_PROMPT.md)。现使用官方默认pixel Avatar；Friday源码保留在avatar/custom/friday.saved.c，不参与构建。待机随机穿插官方跳跃、挥手、托腮、摆手踏步、抬手倾听和弹起，间隔约10–23秒；按PTT即结束待机动作。
+已适配：独立Muse连接、按住中间键录音/松开提交、Gemini TTS回复、官方C Avatar全屏动画和字幕、隐藏Settings、常亮/亮度、开机自启及一个root监督程序。打断后第二问串轮与转写问题已彻底修复并经实测通过；麦克风录音升级为系统原生MIC并带有理软限幅平滑抗削顶；界面新增触控摸摸头宠溺反馈、说话真实口型同步、回答完毕卖萌、屏幕边缘左右滑动调光调音、轻触打断；适配 800×480 贴底全高半身特写（Upper Body Zoom）与按键说话时的 Siri 风格全边缘霓虹极光跑马灯（Siri Edge Glow），支持在设置菜单中无缝独立切换。工作区已完全纳入 Git 版本控制，包含安全回退标签。详见[当前状态及开发日志](docs/PROJECT_LOG.md)和[接手AI提示词](docs/AI_HANDOFF_PROMPT.md)。
 
 实测通过：iPhone首次配对后APK更新/设备重启自动认证；开机无需手动启动即可全屏进入IDLE；Wi-Fi断开进入OFFLINE，恢复后同一进程自动重连；强制杀进程后自动恢复；整个APK暂停时，双音量键五秒仍能返回Android桌面。
 
