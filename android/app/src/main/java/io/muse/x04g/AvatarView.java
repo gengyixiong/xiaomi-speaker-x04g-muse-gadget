@@ -46,8 +46,17 @@ final class AvatarView extends View {
             mode=motion.mode;modeTime=motion.seconds;level=motion.level;happy=motion.happy;
         }
         Native.avatar(bitmap,mode,(now-started)/1000f,modeTime,level,happy);
-        int side=Math.min(384,Math.min(getWidth(),getHeight()-76));float x=(getWidth()-side)/2f,y=Math.max(0,(getHeight()-side-76)/2f);
-        canvas.drawBitmap(bitmap,null,new RectF(x,y,x+side,y+side),paint);
+        boolean upper=s==null||s.store==null||s.store.prefs.getBoolean("upper_body",true);
+        if(upper){
+            Rect src=new Rect(0,0,384,256);
+            float dstH=Math.min(380,getHeight()-86);
+            float dstW=dstH*1.5f;
+            float dstX=(getWidth()-dstW)/2f,dstY=0;
+            canvas.drawBitmap(bitmap,src,new RectF(dstX,dstY,dstX+dstW,dstY+dstH),paint);
+        }else{
+            int side=Math.min(384,Math.min(getWidth(),getHeight()-76));float x=(getWidth()-side)/2f,y=Math.max(0,(getHeight()-side-76)/2f);
+            canvas.drawBitmap(bitmap,null,new RectF(x,y,x+side,y+side),paint);
+        }
         String value=s==null||state.equals("LISTENING")?"":s.caption;
         if(!shown.equals(value)){shown=value;caption=value.isEmpty()?null:StaticLayout.Builder.obtain(value,0,value.length(),text,Math.max(1,getWidth()-40)).setAlignment(Layout.Alignment.ALIGN_CENTER).setIncludePad(false).build();}
         if(caption!=null){int line=caption.getLineForOffset(Math.min(shown.length(),s==null?0:s.captionOffset));int top=caption.getLineTop(line/2*2);canvas.save();canvas.clipRect(0,getHeight()-96,getWidth(),getHeight());canvas.translate(20,getHeight()-Math.min(90,caption.getHeight())-6-top);caption.draw(canvas);canvas.restore();}
