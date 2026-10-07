@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 0: read only. Output may contain network identifiers; keep it local.
+# Read-only device diagnostics. Output may contain network identifiers; keep it local.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ADB="${ADB:-$(command -v adb || true)}"

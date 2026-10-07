@@ -20,6 +20,8 @@
 
 ## 构建与本地配置
 
+克隆后的工作只依赖仓库源码、下面的固定版本上游和自行提供的本地密钥，无需旧诊断、开发日志或历史备份。`README.md` 介绍功能，本文件是唯一维护入口，`NOTICE.md` 保留依赖授权说明。`android/app/src/main/assets/avatar_prompt.md` 和 `avatar_base.c` 是生成自定义角色时读取的运行资源。
+
 构建工具：JDK 17、Gradle 8.7、Android SDK 35、NDK 27.2.12479018、CMake 3.22.1；Android Gradle Plugin 8.6.1，OkHttp 4.12.0。原生依赖和生成产物均不提交 Git。
 
 在项目根目录获取固定版本的依赖：
@@ -70,6 +72,8 @@ APK 位于 `android/app/build/outputs/apk/debug/app-debug.apk`。日常更新使
 
 ## 按键、维护模式与回滚
 
+更新前保留当前 APK 和模块备份；APK 在本机缺失时，可用 `adb shell pm path io.muse.x04g` 查找已安装路径，再用 `adb pull` 取回。模块更新脚本自动备份，但普通 APK 更新不自动备份。私有数据含凭据，仅在本机安全保存。
+
 Magisk systemless keylayout 只把 Linux key 248 从 MUTE 改为 F10，114 保持 VOLUME_DOWN。不要直接修改 `/system`。双音量键同时按住 5 秒由 root supervisor 返回 Android 桌面，即使 APK 卡住也可使用；退出后不会立即被监督程序拉回，手动打开 Muse 或正常重启可恢复。
 
 中间键原有约 8 秒 PMIC 长按复位与 Android keylayout 无关。`device/disable-ptt-reset.sh` 通过 MT6392 `TOP_RST_MISC_CLR`（0x011E）写 0x0040，只清 `TOP_RST_MISC`（0x011A）的 bit6，并检查其他位不变。模块开机重新应用，安装时立即应用；曾实测 0x005B→0x001B，长按超过 15 秒不再重启。开机 hook 已部署，但这一修复尚未单独做跨启动验证。
@@ -104,11 +108,11 @@ adb -s "$SERIAL" shell touch /data/adb/modules/muse_x04g/maintenance /data/adb/m
 adb -s "$SERIAL" reboot
 ```
 
-禁用模块后重启也恢复原长按复位；仅删除修复脚本不会撤销当前寄存器位。若只撤销 PMIC 修复，先从本机 `backups/20261005T135019Z/` 或设备同名备份恢复旧 `service.sh`，再正常重启。重新启用模块需删除模块的 `disable` 和 `maintenance` 后重启。
+禁用模块后重启也恢复原长按复位；仅删除修复脚本不会撤销当前寄存器位。若只撤销 PMIC 修复，删除 `device/service.sh` 中调用 `disable-ptt-reset.sh` 的一行，更新模块后正常重启。重新启用模块需删除模块的 `disable` 和 `maintenance` 后重启。
 
 完全卸载使用 `scripts/uninstall.sh "$SERIAL"` 后重启；卸载 APK 会删除配对凭据。若在配对窗口内强制停止，先重新打开 Muse 让它恢复原蓝牙名，再卸载。
 
-已发生过冷启动后 APK 缺失、私有配对仍在的情况，文件丢失根因未确认；重新安装可恢复连接，脚本安装后执行 `sync`。本机 `backups/cold-boot-recovery/muse-private.tar` 包含敏感恢复数据，不能上传或公开。
+已发生过冷启动后 APK 缺失、私有配对仍在的情况，文件丢失根因未确认；重新安装可恢复连接，脚本安装后执行 `sync`。私有数据备份包含配对凭据，只在本机保留。
 
 ## 最小验证与排障
 
