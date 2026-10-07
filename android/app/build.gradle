@@ -8,7 +8,7 @@ def generateGeminiKey = tasks.register('generateGeminiKey') {
     doLast {
         def key = geminiKeyFile.exists() ? geminiKeyFile.getText('UTF-8').trim() : ''
         if (key.contains('\n') || key.contains('\r') || key.length() > 4096) {
-            throw new GradleException('Local Gemini API key must be on one line; run setup-gemini-key again.')
+            throw new GradleException('Local Gemini API key must be on one line; edit .secrets/gemini-api-key.')
         }
         def dir = geminiAssets.get().asFile
         dir.mkdirs()

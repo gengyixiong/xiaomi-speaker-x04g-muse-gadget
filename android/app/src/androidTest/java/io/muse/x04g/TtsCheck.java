@@ -56,7 +56,7 @@ public final class TtsCheck extends Instrumentation {
             boolean rejected=false;try{Speech.audio(new JSONObject("{\"event_type\":\"step.delta\",\"delta\":{\"type\":\"audio\",\"data\":\"AA==\"}}"));}catch(Exception expected){rejected=true;}require(rejected,"reject incomplete PCM sample");
             startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             await(()->MuseService.instance!=null&&MuseService.instance.speech!=null,10,"service startup");service=MuseService.instance;
-            require(!service.speech.key.isEmpty(),"Run setup-gemini-key first; rebuild APK");
+            require(!service.speech.key.isEmpty(),"Configure .secrets/gemini-api-key; rebuild APK");
             await(()->service.link!=null&&service.link.registered&&!service.link.turn,30,"Muse connection before TTS check");
             runOnMainSync(()->service.speech.stop());
             String text="你好，这是莉达语音测试。";
