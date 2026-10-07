@@ -4,6 +4,8 @@
 
 已适配：独立Muse连接、按住中间键录音/松开提交、Gemini TTS回复、官方C Avatar全屏动画和字幕、隐藏Settings、常亮/亮度、开机自启及一个root监督程序。打断后第二问串轮与转写问题已彻底修复并经实测通过；麦克风录音升级为系统原生MIC并带有理软限幅平滑抗削顶；界面新增触控摸摸头宠溺反馈、说话真实口型同步、回答完毕卖萌、屏幕边缘左右滑动调光调音、轻触打断；适配 800×480 贴底全高半身特写（Upper Body Zoom）与按键说话时的 Siri 风格全边缘霓虹极光跑马灯（Siri Edge Glow），支持在设置菜单中无缝独立切换。工作区已完全纳入 Git 版本控制，包含安全回退标签。详见[当前状态及开发日志](docs/PROJECT_LOG.md)和[接手AI提示词](docs/AI_HANDOFF_PROMPT.md)。
 
+边缘流光现已升级为沿大圆角轮廓向屏幕中央连续渐隐的柔光，颜色缓慢流动，麦克风电平与显示/淡出均做平滑处理。Settings 提供屏幕圆角校准（默认 64 px，范围 24–120 px，针对 800×480 屏幕）。
+
 实测通过：iPhone首次配对后APK更新/设备重启自动认证；开机无需手动启动即可全屏进入IDLE；Wi-Fi断开进入OFFLINE，恢复后同一进程自动重连；强制杀进程后自动恢复；整个APK暂停时，双音量键五秒仍能返回Android桌面。
 
 - [实施设计](docs/architecture.md)：复用边界、Android 实现、阶段验收。
@@ -46,6 +48,20 @@ Windows可用`gradle -p android :app:assembleDebug`构建，然后`adb install -
 
 开发电脑所需上游：`upstream/muse-gadget-sdk`固定上述commit；`upstream/mbedtls`为v3.6.7并包含framework submodule。APK约4.9MiB，仅包含实际系统支持的armeabi-v7a。设备不安装编译器或其他Linux环境；运行依赖Android API、OkHttp、mbedcrypto和官方Noise/Avatar代码。
 
+首次克隆本项目后，在项目根目录获取被 Git 忽略的上游依赖：
+
+```sh
+git clone https://github.com/facebookincubator/muse-gadget-sdk.git upstream/muse-gadget-sdk
+git -C upstream/muse-gadget-sdk checkout 3229892e93c18a768ace42cbe1fe7133f91ca203
+git clone https://github.com/Mbed-TLS/mbedtls.git upstream/mbedtls
+git -C upstream/mbedtls checkout 068ff080b369adfac81509f9b57b2afabaf82dc5
+git -C upstream/mbedtls submodule update --init --recursive
+```
+
+构建需要 JDK 17、Gradle 8.7、Android SDK 35、NDK 27.2.12479018 和 CMake 3.22.1。`scripts/build.sh` 默认使用本机 mise 安装路径；其他电脑通过 `JAVA_HOME`、`ANDROID_HOME` 和 `GRADLE` 指定实际路径。配置 Gemini Key 后构建；未配置 Key 时可编译，但不能使用 Gemini 语音回复。
+
 按住中间键讲话，松开提交；新按下立即停TTS并取消旧stream。Volume+/−调扬声器音量。长按屏幕右上角三秒打开Settings。双音量键同时五秒退出到Android；手动再打开Muse或重启可恢复，ADB持续维护与完整回滚见恢复文档。
+
+中间键原有约 8 秒硬件长按复位已由现有 Magisk 模块关闭，开机自动重新应用；录音仍保持按住讲话、松开提交，上限 15 秒。寄存器只读检查和恢复原长按复位见[恢复文档](docs/recovery.md)。
 
 本地不保存录音、STT或回复历史，只持久化配对、设置与Avatar显示资产。自动更新/OTA、WebView、第二个Muse daemon和Device Owner均未引入。

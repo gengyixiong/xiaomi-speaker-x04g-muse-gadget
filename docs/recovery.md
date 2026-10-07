@@ -6,6 +6,10 @@
 
 ## 硬件逃生
 
+2026-10-05 已关闭中间 PTT 键的约 8 秒硬件长按复位：MT6392 `TOP_RST_MISC`（0x011A）由 0x005B 变为 0x001B，只清除 bit6 `PWRKEY_RST_EN`。`device/disable-ptt-reset.sh` 通过 0x011E 的 CLR 别名写入 0x0040，保留其他电源/复位位，并校验回读；`service.sh` 每次开机重新应用，安装脚本立即应用。没有刷 Kernel 或修改设备树。中间键不再提供硬件强制复位；双音量键逃生、ADB reboot 和断开/恢复供电仍可使用。
+
+只读检查：`adb -s 21065C0VR35518 shell sh /data/adb/modules/muse_x04g/disable-ptt-reset.sh --check`。修改前的模块备份：电脑 `backups/20261005T135019Z/`，设备 `/data/local/tmp/muse-x04g-backup/20261005T135019Z/module/`。要恢复原长按复位，先恢复备份的 `service.sh`，再正常重启；仅恢复脚本不会撤销当前已清除的寄存器位。禁用整个模块后重启也会恢复，但会同时卸下按键映射。
+
 同时按住Volume+与Volume-五秒：root监督程序写维护标记、force-stop Muse、启动Android HOME。已在整个APK被SIGSTOP暂停时，由用户实测成功返回桌面；不依赖Touch或Avatar UI线程。
 
 本次退出后不会立即被watchdog拉回。手动打开Muse可恢复；正常重启也会恢复。原Home仍是 `com.gengyixiong.codexmeter/.MainActivity`，没有替换Launcher。

@@ -32,6 +32,7 @@
 | Phase 6 · 打断转写修复与音频输入优化 | 对齐上游 `muse_chat_link.c` 协议：校验 root 级 `reply_to_message_id` 与 `parent_message_id`、在 ACK 前阻断预泄露回复、追踪 note ID 建立 afterNote 关系。录音输入改用 `AudioSource.MIC` 规避近讲滤波，引入有理软限幅平滑抗削顶。实机测试确认打断后第二问回答恢复正常。 |
 | Phase 7 · 动效与交互增强 | 触控摸摸头宠溺反馈（happy 跳跃/弯眼笑/爱心泡泡）；回答完毕卖萌反馈；实时音频振幅计算驱动动态口型同步（Lip Sync）；屏幕左侧垂直滑动调亮度、右侧调音量并显示半透明数值反馈；轻触屏幕随时打断语音播报。 |
 | Phase 8 · 宽屏贴底下半身特写与 Siri 边缘跑马灯 | 宽屏半身像放大（3:2比例裁切下半身、紧贴屏幕下沿 480p 满高，占屏 720×480，保留完整手部、爱心与气泡，带半透明字幕底条）；按键说话时触发双层 Siri 风格全边缘霓虹极光流光跑马灯（SweepGradient 旋转循环、随麦克风实时音浪脉冲呼吸、释放后平滑缓释）；Settings 中提供半身特写与跑马灯独立实时切换开关。 |
+| Phase 9 · 柔光渐隐与实屏圆角 | 将两条等宽描边替换为圆角距离遮罩 + SweepGradient，以窄亮边和宽柔光连续向内衰减；色带缓慢旋转并轻微漂移，电平及状态透明度采用平滑过渡。遮罩半分辨率缓存，仅尺寸或圆角改变时重建；Settings 提供 24–120 px 圆角校准，默认 64 px。已编译部署，实机检查通过向内渐隐、圆角裁切、硬件显示及淡出；检查未启用麦克风或 TTS。按用户选择开启流光开关。 |
 
 ## 已确认的根因修复细节与验证结果
 
@@ -46,6 +47,7 @@
 3. **视觉与交互升级**：
    - 实现了完整的触控反馈系统（摸摸头、滑动手势、轻触打断）；
    - 大半身宽屏特写（Upper Body Zoom）与 Siri 风格边缘跑马灯（Siri Edge Glow）已实机验证并通过截屏确认，在设置界面均有开关独立控制。
+   - 新版流光采用柔光渐隐与可校准的大圆角。更新前安装的 APK 留在本地忽略提交的 `backups/pre-edge-glow-20261005T132332Z/app.apk`；临时检查 APK 已卸载。可重复检查入口：先构建并安装 Android test APK，再运行 `adb -s 21065C0VR35518 shell am instrument -w -e check edge-glow io.muse.x04g.test/io.muse.x04g.TtsCheck`。检查保存一张无字幕的 UI 预览至 app cache，结束后需删除截图并卸载 test APK；默认恢复原流光开关，显式 `-e enable true` 可保持开启。
 
 ## 运行依赖、构建和安装
 
@@ -69,6 +71,14 @@ adb -s 21065C0VR35518 shell am start -n io.muse.x04g/.MainActivity
 ```
 
 完整 Android 恢复/ADB maintenance 和退出 kiosk 的方法见 [recovery.md](recovery.md)。不要 factory reset、刷分区或删除 app 私有数据。
+
+## 中间键长按硬件复位修复（2026-10-05 13:50 UTC）
+
+用户报告按住发送键约 6–10 秒出现两次整机重启。最近一次重启前内核记录 `PMICKEYS pressed key=248`，约 7.58 秒后日志突然结束，没有 release；下次启动为 `cold,powerkey`，没有本次 Muse crash/panic 证据。设备树把中间键映射为 PMIC pwrkey/248，并配置单键长按、8 秒档；只读 regmap 确认 `MT6392_TOP_RST_MISC`（0x011A）=0x005B，bit6 `PWRKEY_RST_EN` 开启。Android keylayout 改 F10 不会关闭此硬件动作。完整本机诊断在忽略提交的 `diagnostics/ptt-reboot-20261005T134349Z/REPORT.md`。
+
+已添加 `device/disable-ptt-reset.sh`，通过 `TOP_RST_MISC_CLR`（0x011E）写 0x0040，只清 bit6；回读 0x005B→0x001B，其他位保持不变。现有 `service.sh` 开机早期调用，`install-appliance.sh` 安装后立即应用并 sync。使用原有 supervisor 二进制，校验 SHA256 与备份一致，未更新 APK、刷 Kernel/设备树或改变双音量键逃生。
+
+验证：shell 语法和 git diff 检查通过；脚本重复执行仍为 0x001B；脚本 `--check` 只读校验通过。用户确认长按不再重启；实机 PTT DOWN 13:50:49.323、UP 13:51:05.798，持续约 16.475 秒。录音于 15 秒上限提交 480000 字节 PCM，Muse ACK、TTS 播放、返回 IDLE 均正常，boot ID 与 Muse PID 3633 保持不变。开机 hook 已部署，但本轮没有主动重启以测试跨启动应用。模块备份与回滚步骤见 [recovery.md](recovery.md)。
 
 ## 交接资料导航
 
