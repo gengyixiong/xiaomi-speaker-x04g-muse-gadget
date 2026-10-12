@@ -13,8 +13,13 @@ using namespace musegadgets::noise::core;
 struct Session {
     PsaCryptoBackend crypto;
     ClientSession noise{crypto};
-    std::vector<uint8_t> svc=std::vector<uint8_t>(512*1024);
-    std::vector<uint8_t> env=std::vector<uint8_t>(512*1024);
+    // A voice note is one /chat/stream request: 15 s of 16 kHz mono is 480 KB of
+    // PCM, 640 KB once base64, plus the JSON wrapper. Both scratches must cover
+    // the whole request, so size them above the largest note with margin.
+    // (1 MiB each; the device has ~500 MB free and one session exists at a time.)
+    static constexpr size_t kScratchBytes = 1024*1024;
+    std::vector<uint8_t> svc=std::vector<uint8_t>(kScratchBytes);
+    std::vector<uint8_t> env=std::vector<uint8_t>(kScratchBytes);
     std::array<uint8_t,ClientSession::kMaxOutboundWebSocketPayloadSize> ws{};
 };
 static Session& session(jlong h) { return *reinterpret_cast<Session*>(h); }

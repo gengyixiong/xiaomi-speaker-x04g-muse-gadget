@@ -29,7 +29,6 @@ final class MuseLink {
     boolean avatarMode,avatarSaved;
     volatile boolean registered,turn;
     long voiceGeneration;
-    final java.util.concurrent.atomic.AtomicInteger audioQueued=new java.util.concurrent.atomic.AtomicInteger();
     ScheduledFuture<?> turnTimer;
     volatile boolean closed;
     int failures;
@@ -216,21 +215,31 @@ final class MuseLink {
         try {
             if(!registered){status.accept("Muse not connected");return;}
             cancelTurn();voiceGeneration=generation;turn=true;turnStart=lastEvent=lastContent=SystemClock.elapsedRealtime();
-            String head="{\"message\":\"\",\"output_modality\":\"text\",\"device_id\":"+JSONObject.quote(store.node)+",\"items\":[{\"type\":\"file\",\"mime_type\":\"audio/wav\",\"filename\":\"voice_note.wav\",\"data_base64\":\"";
-            chatId=request("/chat/stream",Pairing.utf(head),false);
         }catch(Exception e){fail("Voice start failed: "+code(e));}
     });}
-    boolean voiceChunk(long generation,byte[] bytes,boolean end) {
+    // One request for the whole note, with the WAV declaring its real length. The
+    // base64 body is built in a single pass so the payload never doubles in memory
+    // (15 s of 16 kHz mono is ~640 KB encoded).
+    boolean sendVoiceNote(long generation,byte[] wavBytes) {
         if(closed)return false;
-        if(audioQueued.addAndGet(bytes.length)>64*1024){audioQueued.addAndGet(-bytes.length);return false;}
-        post(()->{
-            try {
-                if(generation!=voiceGeneration||!turn||chatId==0)return;
-                send(Native.body(nativeHandle,chatId,bytes,end));
-                if(end){submitted=true;lastEvent=lastContent=SystemClock.elapsedRealtime();status.accept("Thinking");turnTimer=worker.schedule(this::settle,1,TimeUnit.SECONDS);}
-            }catch(Exception e){fail("Voice send failed: "+code(e));}
-            finally {audioQueued.addAndGet(-bytes.length);Arrays.fill(bytes,(byte)0);}
-        });return true;
+        try {
+            String head="{\"message\":\"\",\"output_modality\":\"text\",\"device_id\":"+JSONObject.quote(store.node)+",\"items\":[{\"type\":\"file\",\"mime_type\":\"audio/wav\",\"filename\":\"voice_note.wav\",\"data_base64\":\"";
+            String tail="\"}]}";
+            byte[] headBytes=Pairing.utf(head),body=Pairing.utf(Base64.getEncoder().encodeToString(wavBytes)),tailBytes=Pairing.utf(tail);
+            Arrays.fill(wavBytes,(byte)0);
+            byte[] payload=Pairing.join(headBytes,body,tailBytes);
+            Arrays.fill(body,(byte)0);
+            post(()->{
+                try {
+                    if(generation!=voiceGeneration||!turn)return;
+                    chatId=request("/chat/stream",payload,true);
+                    submitted=true;lastEvent=lastContent=SystemClock.elapsedRealtime();status.accept("Thinking");
+                    turnTimer=worker.schedule(this::settle,1,TimeUnit.SECONDS);
+                }catch(Exception e){fail("Voice send failed: "+code(e));}
+                finally {Arrays.fill(payload,(byte)0);}
+            });
+            return true;
+        } catch(Exception e){fail("Voice encode failed: "+code(e));return false;}
     }
     void abortVoice(long generation) {post(()->{if(voiceGeneration==generation)try{cancelTurn();}catch(Exception e){fail("Voice cancel failed");}});}
     void cancelTurn() throws Exception {
@@ -311,6 +320,6 @@ final class MuseLink {
         client.dispatcher().cancelAll();
         worker.execute(()->{if(retry!=null)retry.cancel(false);disconnect();network.unregisterNetworkCallback(callback);client.dispatcher().executorService().shutdown();client.connectionPool().evictAll();worker.shutdownNow();});
     }
-    static String code(Exception e) {return e instanceof HttpError?"HTTP "+((HttpError)e).code:e.getClass().getSimpleName();}
+    static String code(Exception e) {return e instanceof HttpError?"HTTP "+((HttpError)e).code:e.getClass().getSimpleName()+(e.getMessage()==null?"":": "+e.getMessage());}
     static final class HttpError extends IOException {final int code;HttpError(int code){super("HTTP "+code);this.code=code;}}
 }
